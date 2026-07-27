@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon src/index.js",
-    "start": "NODE_ENV=production node src/index.js",
-    "build": "cd ../client && npm run build",
+    "start": "prisma migrate deploy && node src/index.js",
+    "build": "npm --prefix ../client run build",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:setup": "prisma generate && prisma db push",
