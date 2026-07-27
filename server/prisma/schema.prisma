@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(uuid())
+  name          String
+  email         String    @unique
+  password      String
+  about         String?   @default("Hey there! I am using Private Chat.")
+  avatarUrl     String?
+  isOnline      Boolean   @default(false)
+  lastSeen      DateTime  @default(now())
+  chatClearedAt DateTime?
+  refreshToken  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  reactions        Reaction[]
+  callsInitiated   Call[]    @relation("CallerCalls")
+  callsReceived    Call[]    @relation("ReceiverCalls")
+}
+
+model Message {
+  id            String    @id @default(uuid())
+  senderId      String
+  receiverId    String
+  sender        User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver      User      @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  type          String    @default("TEXT")
+  content       String?
+  mediaUrl      String?
+  mediaMimeType String?
+  mediaSize     Int?
+  waveform      String?
+
+  status        String    @default("SENT")
+  deliveredAt   DateTime?
+  readAt        DateTime?
+
+  replyToId     String?
+  replyTo       Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies       Message[] @relation("MessageReplies")
+
+  isEdited      Boolean   @default(false)
+  isDeleted     Boolean   @default(false)
+  forwardedFrom String?
+
+  reactions     Reaction[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([senderId, receiverId])
+  @@index([createdAt])
+}
+
+model Reaction {
+  id        String   @id @default(uuid())
+  emoji     String
+  messageId String
+  userId    String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, userId])
+}
+
+model Call {
+  id          String    @id @default(uuid())
+  callerId    String
+  receiverId  String
+  caller      User      @relation("CallerCalls", fields: [callerId], references: [id], onDelete: Cascade)
+  receiver    User      @relation("ReceiverCalls", fields: [receiverId], references: [id], onDelete: Cascade)
+  type        String
+  status      String
+  startedAt   DateTime  @default(now())
+  endedAt     DateTime?
+  durationSec Int?
+}
+
