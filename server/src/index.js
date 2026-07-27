@@ -16,7 +16,7 @@ function getLocalIPs() {
       }
     }
   }
-  return ips;
+  return ips;x
 }
 
 const server = http.createServer(app);

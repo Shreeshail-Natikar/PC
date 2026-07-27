@@ -4,6 +4,8 @@ import { useSocket } from '../context/SocketContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { SoundManager } from '../utils/sounds.js';
 import { NotificationManager } from '../utils/notifications.js';
+import { EMPTY_CHAT_PLACEHOLDER } from '../constants/chat.js';
+import { formatConversationTimestamp, formatMessagePreview, getDisplayName, getInitials } from '../utils/chat.js';
 
 export default function ChatSidebar({
   activeContact,
@@ -229,12 +231,13 @@ export default function ChatSidebar({
         {!contacts.length ? (
           <div className="p-6 text-center text-xs text-gray-400 animate-fadeIn">
             <div className="animate-bounceSoft text-3xl mb-2">⏳</div>
-            Add a contact to start chatting.
+            {EMPTY_CHAT_PLACEHOLDER}
           </div>
         ) : filteredContacts.length ? (
           filteredContacts.map((contact) => {
             const userData = contact?.user || contact;
             const isActive = activeContact?.id === userData?.id;
+            const displayName = getDisplayName(userData, 'Contact');
             return (
               <div
                 key={userData.id}
@@ -258,7 +261,7 @@ export default function ChatSidebar({
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-md animate-float ring-2 ring-transparent group-hover:ring-whatsapp-green/50 transition-all">
-                      {userData.name?.[0]?.toUpperCase() || 'C'}
+                      {getInitials(displayName, 'C')}
                     </div>
                   )}
                   <span
@@ -273,11 +276,11 @@ export default function ChatSidebar({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-0.5">
                     <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-whatsapp-teal dark:group-hover:text-whatsapp-green transition-colors">
-                      {userData.name}
+                      {displayName}
                     </h3>
                     {lastMessage && isActive && (
                       <span className="text-[11px] text-gray-400 font-medium">
-                        {new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatConversationTimestamp(lastMessage.createdAt)}
                       </span>
                     )}
                   </div>
@@ -285,15 +288,7 @@ export default function ChatSidebar({
                   <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
                     <p className="truncate pr-2">
                       {isActive && lastMessage
-                        ? lastMessage.isDeleted
-                          ? '🚫 This message was deleted'
-                          : lastMessage.type === 'IMAGE'
-                          ? '📷 Photo'
-                          : lastMessage.type === 'VOICE_NOTE'
-                          ? '🎙️ Voice note'
-                          : lastMessage.type === 'VIDEO'
-                          ? '🎥 Video'
-                          : lastMessage.content || 'Attachment'
+                        ? formatMessagePreview(lastMessage, 'Attachment')
                         : userData.about || 'Tap to open chat'}
                     </p>
                     {isActive && unreadCount > 0 && (

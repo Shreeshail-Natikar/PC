@@ -13,8 +13,8 @@ import ProfileModal from '../components/ProfileModal.jsx';
 import AddContactModal from '../components/AddContactModal.jsx';
 import { NotificationManager } from '../utils/notifications.js';
 import { SoundManager } from '../utils/sounds.js';
-
-const BASE_TITLE = 'Private Chat';
+import { BASE_TITLE } from '../constants/chat.js';
+import { getConversationThreadMessages, getDisplayName } from '../utils/chat.js';
 
 function isTabActive() {
   if (typeof document === 'undefined') return true;
@@ -51,6 +51,10 @@ export default function ChatHome() {
   const initialLoadDone = useRef(false);
   const pendingUnreadRef = useRef(0);
 
+  const normalizeConversationMessages = useCallback((contactId, nextMessages) => {
+    return getConversationThreadMessages(nextMessages, user?.id, contactId);
+  }, [user?.id]);
+
   useEffect(() => {
     function handleResize() {
       const mobile = window.innerWidth < 768;
@@ -83,24 +87,24 @@ export default function ChatHome() {
   const updateConversationMessage = useCallback((contactId, messageId, updater) => {
     setConversations((prev) => {
       const prevMessages = prev[contactId] || [];
-      const nextMessages = prevMessages.map((msg) => (msg.id === messageId ? updater(msg) : msg));
+      const nextMessages = normalizeConversationMessages(contactId, prevMessages.map((msg) => (msg.id === messageId ? updater(msg) : msg)));
       if (activeContact?.id === contactId) {
         setMessages(nextMessages);
       }
       return { ...prev, [contactId]: nextMessages };
     });
-  }, [activeContact?.id]);
+  }, [activeContact?.id, normalizeConversationMessages]);
 
   const markAllAsReadNow = useCallback(async () => {
     try {
       await api.post('/messages/read');
       const now = new Date();
       if (activeContact) emitReadMessage(activeContact.id, now);
-      const nextMessages = (messages || []).map((m) =>
+      const nextMessages = normalizeConversationMessages(activeContact?.id, (messages || []).map((m) =>
         m.senderId !== user?.id && m.status !== 'READ'
           ? { ...m, status: 'READ', readAt: now }
           : m
-      );
+      ));
       setMessages(nextMessages);
       if (activeContact) {
         setConversations((prev) => ({ ...prev, [activeContact.id]: nextMessages }));
@@ -110,7 +114,7 @@ export default function ChatHome() {
       setAppBadge(0);
       document.title = BASE_TITLE;
     } catch {}
-  }, [activeContact, messages, user?.id, emitReadMessage]);
+  }, [activeContact, messages, normalizeConversationMessages, user?.id, emitReadMessage]);
 
   useEffect(() => {
     if (!contacts.length) {
@@ -142,14 +146,15 @@ export default function ChatHome() {
         const { data: msgData } = await api.get(`/messages?receiverId=${activeContact.id}`);
         const msgs = msgData.messages || [];
         if (!cancelled) {
-          storeConversationMessages(activeContact.id, msgs);
+          const normalizedMessages = normalizeConversationMessages(activeContact.id, msgs);
+          storeConversationMessages(activeContact.id, normalizedMessages);
           if (msgData.chatClearedAt) {
             setChatClearedInfo({ at: new Date(msgData.chatClearedAt) });
           } else {
             setChatClearedInfo(null);
           }
 
-          const initialUnread = msgs.filter((m) => m.senderId !== user?.id && m.status !== 'READ').length;
+          const initialUnread = normalizedMessages.filter((m) => m.senderId !== user?.id && m.status !== 'READ').length;
           if (isTabActive()) {
             await api.post('/messages/read');
             if (activeContact) emitReadMessage(activeContact.id, new Date());
@@ -175,7 +180,7 @@ export default function ChatHome() {
     return () => {
       cancelled = true;
     };
-  }, [activeContact?.id, conversations, storeConversationMessages, user?.id, emitReadMessage]);
+  }, [activeContact?.id, conversations, normalizeConversationMessages, storeConversationMessages, user?.id, emitReadMessage]);
 
   useEffect(() => {
     function onVisibilityOrFocus() {
@@ -201,7 +206,7 @@ export default function ChatHome() {
 
       setConversations((prev) => {
         const prevMessages = prev[contactId] || [];
-        const nextMessages = [...prevMessages, message];
+        const nextMessages = normalizeConversationMessages(contactId, [...prevMessages, message]);
         if (activeContact?.id === contactId) {
           setMessages(nextMessages);
         }
@@ -211,7 +216,7 @@ export default function ChatHome() {
 
       if (isIncoming) {
         const tabActive = isTabActive();
-        const senderName = contacts.find((c) => c.user.id === contactId)?.user?.name || 'Contact';
+        const senderName = getDisplayName(contacts.find((c) => c.user.id === contactId)?.user, 'Contact');
 
         if (tabActive) {
           api.post('/messages/read');
@@ -240,7 +245,7 @@ export default function ChatHome() {
       if (!activeContact?.id) return;
       setConversations((prev) => {
         const prevMessages = prev[activeContact.id] || [];
-        const nextMessages = prevMessages.map((msg) => ({ ...msg, status: 'READ', readAt }));
+        const nextMessages = normalizeConversationMessages(activeContact.id, prevMessages.map((msg) => ({ ...msg, status: 'READ', readAt })));
         setMessages(nextMessages);
         return { ...prev, [activeContact.id]: nextMessages };
       });
@@ -280,7 +285,7 @@ export default function ChatHome() {
       socket.off('message:delete_update', handleDeleteUpdate);
       socket.off('profile:updated', handleProfileUpdated);
     };
-  }, [socket, activeContact, contacts, user, emitReadMessage, markAllAsReadNow, updateConversationMessage]);
+  }, [socket, activeContact, contacts, user, emitReadMessage, markAllAsReadNow, normalizeConversationMessages, updateConversationMessage]);
 
   const handleSendMessage = useCallback(
     async ({ content, type, replyToId }) => {
@@ -295,7 +300,7 @@ export default function ChatHome() {
         const newMsg = data.message;
         setConversations((prev) => {
           const prevMessages = prev[activeContact?.id] || [];
-          const nextMessages = [...prevMessages, newMsg];
+          const nextMessages = normalizeConversationMessages(activeContact?.id, [...prevMessages, newMsg]);
           if (activeContact?.id) {
             setMessages(nextMessages);
           }
@@ -313,7 +318,7 @@ export default function ChatHome() {
         SoundManager.playError();
       }
     },
-    [activeContact, emitSendMessage]
+    [activeContact, emitSendMessage, normalizeConversationMessages]
   );
 
   const handleUploadFile = useCallback(
@@ -339,7 +344,7 @@ export default function ChatHome() {
       const newMsg = msgRes.message;
       setConversations((prev) => {
         const prevMessages = prev[activeContact?.id] || [];
-        const nextMessages = [...prevMessages, newMsg];
+        const nextMessages = normalizeConversationMessages(activeContact?.id, [...prevMessages, newMsg]);
         if (activeContact?.id) {
           setMessages(nextMessages);
         }
@@ -353,7 +358,7 @@ export default function ChatHome() {
         emitSendMessage(activeContact.id, newMsg);
       }
     },
-    [activeContact, emitSendMessage]
+    [activeContact, emitSendMessage, normalizeConversationMessages]
   );
 
   const handleReact = useCallback(

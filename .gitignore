@@ -1,39 +1,33 @@
+# Dependencies
 node_modules/
-dist/
-build/
+client/node_modules/
+server/node_modules/
 
-# Environment / secrets
+# Build
+/dist/
+/client/dist/
+/build/
+/.vite/
+
+# Environment
 .env
 .env.local
-.env.*.local
-
-# Server secrets / data (never commit real DB or uploads)
-server/uploads/*
-!server/uploads/.gitkeep
-!server/uploads/*/.gitkeep
-server/prisma/dev.db
-server/prisma/dev.db-journal
-server/prisma/dev.db-shm
-server/prisma/dev.db-wal
-server/prisma/migrations/
-
-# Local media uploads test data
-client/dist/
+.env.*
 
 # Logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+logs/
+
+# Prisma
+server/prisma/dev.db
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Editor / IDE
-.idea/
+# IDE
 .vscode/
-*.swp
-*.swo
+.idea/
+
+# Misc
+coverage/

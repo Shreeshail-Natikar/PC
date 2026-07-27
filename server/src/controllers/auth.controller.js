@@ -16,14 +16,17 @@ function sanitizeUser(user) {
 
 function refreshCookieOptions(rememberMe) {
   const maxAgeMs = rememberMe
-    ? 90 * 24 * 60 * 60 * 1000 // 90 days
-    : 30 * 24 * 60 * 60 * 1000; // 30 days
+    ? 90 * 24 * 60 * 60 * 1000
+    : 30 * 24 * 60 * 60 * 1000;
+
+  const isProd = process.env.NODE_ENV === "production";
+
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
     maxAge: maxAgeMs,
-    path: '/api/auth',
+    path: "/api/auth",
   };
 }
 
