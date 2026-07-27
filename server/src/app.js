@@ -23,6 +23,7 @@ const UPLOADS_DIR = path.resolve(ROOT_DIR, 'server', 'uploads');
 
 const app = express();
 
+app.set('trust proxy', 1);
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
