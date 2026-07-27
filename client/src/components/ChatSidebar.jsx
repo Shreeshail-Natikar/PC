@@ -6,11 +6,14 @@ import { SoundManager } from '../utils/sounds.js';
 import { NotificationManager } from '../utils/notifications.js';
 
 export default function ChatSidebar({
-  partner,
+  activeContact,
+  contacts = [],
   lastMessage,
   unreadCount,
   onOpenOwnProfile,
   onOpenPartnerProfile,
+  onOpenAddContact,
+  onSelectContact,
   onGoToChat,
   className = '',
   isMobile = false,
@@ -23,7 +26,7 @@ export default function ChatSidebar({
   const [notifOn, setNotifOn] = useState(true);
   const [notifPermission, setNotifPermission] = useState('default');
 
-  const isPartnerOnline = partnerPresence?.isOnline ?? partner?.isOnline;
+  const isPartnerOnline = partnerPresence?.isOnline ?? activeContact?.isOnline;
 
   useEffect(() => {
     setSoundOn(SoundManager.isEnabled());
@@ -31,10 +34,12 @@ export default function ChatSidebar({
     NotificationManager.getPermission().then(setNotifPermission);
   }, []);
 
-  const showPartner =
-    !search ||
-    partner?.name?.toLowerCase().includes(search.toLowerCase()) ||
-    partner?.email?.toLowerCase().includes(search.toLowerCase());
+  const filteredContacts = (contacts || []).filter((contact) => {
+    const userData = contact?.user || contact;
+    if (!search) return true;
+    const haystack = `${userData?.name || ''} ${userData?.email || ''}`.toLowerCase();
+    return haystack.includes(search.toLowerCase());
+  });
 
   async function handleToggleNotifications() {
     if (NotificationManager.isSupported()) {
@@ -103,6 +108,17 @@ export default function ChatSidebar({
         </div>
 
         <div className="flex items-center gap-0.5">
+          {/* Add Contact */}
+          <button
+            onClick={onOpenAddContact}
+            title="Add contact"
+            className="p-2 text-gray-500 hover:text-whatsapp-teal dark:text-gray-400 dark:hover:text-whatsapp-green transition rounded-full hover:bg-gray-200 dark:hover:bg-gray-700/50"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4" />
+            </svg>
+          </button>
+
           {/* Sound Toggle */}
           <button
             onClick={handleToggleSound}
@@ -210,78 +226,86 @@ export default function ChatSidebar({
 
       {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
-        {!partner ? (
+        {!contacts.length ? (
           <div className="p-6 text-center text-xs text-gray-400 animate-fadeIn">
             <div className="animate-bounceSoft text-3xl mb-2">⏳</div>
-            Waiting for partner to register...
+            Add a contact to start chatting.
           </div>
-        ) : showPartner ? (
-          <div
-            onClick={() => {
-              if (isMobile && onGoToChat) {
-                onGoToChat();
-              } else {
-                onOpenPartnerProfile?.();
-              }
-            }}
-            className="flex items-center gap-3 p-3 cursor-pointer bg-gray-50 dark:bg-[#2a3942] hover:bg-gray-100 dark:hover:bg-[#202c33] transition-all duration-200 border-b border-gray-100 dark:border-gray-800/40 animate-slideUp group"
-            title={isMobile ? `Open chat with ${partner.name}` : `View ${partner.name} profile`}
-          >
-            <div className="relative flex-shrink-0">
-              {partner.avatarUrl ? (
-                <img
-                  src={partner.avatarUrl}
-                  alt={partner.name}
-                  className="w-12 h-12 rounded-full object-cover shadow-md ring-2 ring-transparent group-hover:ring-whatsapp-green/50 transition-all"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-md animate-float ring-2 ring-transparent group-hover:ring-whatsapp-green/50 transition-all">
-                  {partner.name?.[0]?.toUpperCase() || 'P'}
-                </div>
-              )}
-              <span
-                className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-whatsapp-panelLight dark:border-whatsapp-panel ${
-                  isPartnerOnline ? 'bg-green-500' : 'bg-gray-400'
+        ) : filteredContacts.length ? (
+          filteredContacts.map((contact) => {
+            const userData = contact?.user || contact;
+            const isActive = activeContact?.id === userData?.id;
+            return (
+              <div
+                key={userData.id}
+                onClick={() => {
+                  onSelectContact?.(userData);
+                  if (isMobile && onGoToChat) {
+                    onGoToChat();
+                  }
+                }}
+                className={`flex items-center gap-3 p-3 cursor-pointer transition-all duration-200 border-b border-gray-100 dark:border-gray-800/40 animate-slideUp group ${
+                  isActive ? 'bg-gray-100 dark:bg-[#2a3942]' : 'bg-transparent hover:bg-gray-50 dark:hover:bg-[#202c33]'
                 }`}
+                title={`Open chat with ${userData.name}`}
               >
-                {isPartnerOnline && <span className="absolute inset-0 rounded-full bg-green-400 animate-pulseRing" />}
-              </span>
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-0.5">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-whatsapp-teal dark:group-hover:text-whatsapp-green transition-colors">
-                  {partner.name}
-                </h3>
-                {lastMessage && (
-                  <span className="text-[11px] text-gray-400 font-medium">
-                    {new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className="relative flex-shrink-0">
+                  {userData.avatarUrl ? (
+                    <img
+                      src={userData.avatarUrl}
+                      alt={userData.name}
+                      className="w-12 h-12 rounded-full object-cover shadow-md ring-2 ring-transparent group-hover:ring-whatsapp-green/50 transition-all"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-emerald-600 flex items-center justify-center text-white font-bold text-lg shadow-md animate-float ring-2 ring-transparent group-hover:ring-whatsapp-green/50 transition-all">
+                      {userData.name?.[0]?.toUpperCase() || 'C'}
+                    </div>
+                  )}
+                  <span
+                    className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-whatsapp-panelLight dark:border-whatsapp-panel ${
+                      userData.isOnline ? 'bg-green-500' : 'bg-gray-400'
+                    }`}
+                  >
+                    {userData.isOnline && <span className="absolute inset-0 rounded-full bg-green-400 animate-pulseRing" />}
                   </span>
-                )}
-              </div>
+                </div>
 
-              <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                <p className="truncate pr-2">
-                  {lastMessage
-                    ? lastMessage.isDeleted
-                      ? '🚫 This message was deleted'
-                      : lastMessage.type === 'IMAGE'
-                      ? '📷 Photo'
-                      : lastMessage.type === 'VOICE_NOTE'
-                      ? '🎙️ Voice note'
-                      : lastMessage.type === 'VIDEO'
-                      ? '🎥 Video'
-                      : lastMessage.content || 'Attachment'
-                    : partner.about || 'Available'}
-                </p>
-                {unreadCount > 0 && (
-                  <span className="bg-whatsapp-green text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 animate-bounceSoft">
-                    {unreadCount}
-                  </span>
-                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-0.5">
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate group-hover:text-whatsapp-teal dark:group-hover:text-whatsapp-green transition-colors">
+                      {userData.name}
+                    </h3>
+                    {lastMessage && isActive && (
+                      <span className="text-[11px] text-gray-400 font-medium">
+                        {new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    <p className="truncate pr-2">
+                      {isActive && lastMessage
+                        ? lastMessage.isDeleted
+                          ? '🚫 This message was deleted'
+                          : lastMessage.type === 'IMAGE'
+                          ? '📷 Photo'
+                          : lastMessage.type === 'VOICE_NOTE'
+                          ? '🎙️ Voice note'
+                          : lastMessage.type === 'VIDEO'
+                          ? '🎥 Video'
+                          : lastMessage.content || 'Attachment'
+                        : userData.about || 'Tap to open chat'}
+                    </p>
+                    {isActive && unreadCount > 0 && (
+                      <span className="bg-whatsapp-green text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 animate-bounceSoft">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            );
+          })
         ) : (
           <div className="p-4 text-center text-xs text-gray-400">No chats found</div>
         )}

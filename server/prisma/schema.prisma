@@ -8,24 +8,47 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  name          String
-  email         String    @unique
-  password      String
-  about         String?   @default("Hey there! I am using Private Chat.")
-  avatarUrl     String?
-  isOnline      Boolean   @default(false)
-  lastSeen      DateTime  @default(now())
-  chatClearedAt DateTime?
-  refreshToken  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                               String     @id @default(uuid())
+  name                             String
+  email                            String     @unique
+  password                         String
+  about                            String?    @default("Hey there! I am using Private Chat.")
+  avatarUrl                        String?
+  isOnline                         Boolean    @default(false)
+  lastSeen                         DateTime   @default(now())
+  chatClearedAt                    DateTime?
+  refreshToken                     String?
+  createdAt                        DateTime   @default(now())
+  updatedAt                        DateTime   @updatedAt
 
-  sentMessages     Message[] @relation("SentMessages")
-  receivedMessages Message[] @relation("ReceivedMessages")
-  reactions        Reaction[]
-  callsInitiated   Call[]    @relation("CallerCalls")
-  callsReceived    Call[]    @relation("ReceiverCalls")
+  sentMessages                     Message[]  @relation("SentMessages")
+  receivedMessages                 Message[]  @relation("ReceivedMessages")
+  reactions                        Reaction[]
+  callsInitiated                   Call[]     @relation("CallerCalls")
+  callsReceived                    Call[]     @relation("ReceiverCalls")
+  
+  // Contacts relations
+  contacts                         Contact[]  @relation("UserContacts")
+  contactOf                        Contact[]  @relation("ContactOf")
+
+  @@index([email])
+}
+
+model Contact {
+  id          String   @id @default(uuid())
+  userId      String   // The user who added the contact
+  contactId   String   // The user who is added as a contact
+  nickname    String?  // Optional custom nickname
+  isBlocked   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user        User     @relation("UserContacts", fields: [userId], references: [id], onDelete: Cascade)
+  contact     User     @relation("ContactOf", fields: [contactId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, contactId])
+  @@index([userId])
+  @@index([contactId])
 }
 
 model Message {
@@ -87,4 +110,3 @@ model Call {
   endedAt     DateTime?
   durationSec Int?
 }
-

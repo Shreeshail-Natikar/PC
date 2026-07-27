@@ -10,10 +10,13 @@ const PROJECT_ROOT = path.resolve(__dirname, '../../..');
 export async function getMessages(req, res, next) {
   try {
     const currentUserId = req.user.id;
+    const receiverId = req.query.receiverId || req.query.contactId;
 
     const [user, partner] = await Promise.all([
       prisma.user.findUnique({ where: { id: currentUserId }, select: { chatClearedAt: true } }),
-      prisma.user.findFirst({ where: { id: { not: currentUserId } } }),
+      receiverId
+        ? prisma.user.findUnique({ where: { id: receiverId } })
+        : prisma.user.findFirst({ where: { id: { not: currentUserId } } }),
     ]);
 
     if (!partner) {

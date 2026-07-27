@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import api from '../services/api.js';
 import { useSocket } from '../context/SocketContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useContacts } from '../context/ContactsContext.jsx';
 import ChatSidebar from '../components/ChatSidebar.jsx';
 import ChatHeader from '../components/ChatHeader.jsx';
 import MessageList from '../components/MessageList.jsx';
@@ -9,6 +10,7 @@ import MessageInput from '../components/MessageInput.jsx';
 import CallModal from '../components/CallModal.jsx';
 import MediaViewerModal from '../components/MediaViewerModal.jsx';
 import ProfileModal from '../components/ProfileModal.jsx';
+import AddContactModal from '../components/AddContactModal.jsx';
 import { NotificationManager } from '../utils/notifications.js';
 import { SoundManager } from '../utils/sounds.js';
 
@@ -31,15 +33,18 @@ async function setAppBadge(count) {
 export default function ChatHome() {
   const { socket, emitTypingStart, emitTypingStop, emitSendMessage, emitReadMessage, emitReaction, emitEditMessage, emitDeleteMessage } = useSocket();
   const { user } = useAuth();
+  const { contacts } = useContacts();
 
-  const [partner, setPartner] = useState(null);
+  const [activeContact, setActiveContact] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [conversations, setConversations] = useState({});
   const [replyingTo, setReplyingTo] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
   const [viewingMedia, setViewingMedia] = useState(null);
   const [chatClearedInfo, setChatClearedInfo] = useState(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileViewingUser, setProfileViewingUser] = useState(null);
+  const [addContactOpen, setAddContactOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth < 768 : false);
   const [mobileView, setMobileView] = useState('sidebar');
 
@@ -68,66 +73,109 @@ export default function ChatHome() {
     }
   }, []);
 
+  const storeConversationMessages = useCallback((contactId, nextMessages) => {
+    setConversations((prev) => ({ ...prev, [contactId]: nextMessages }));
+    if (activeContact?.id === contactId) {
+      setMessages(nextMessages);
+    }
+  }, [activeContact?.id]);
+
+  const updateConversationMessage = useCallback((contactId, messageId, updater) => {
+    setConversations((prev) => {
+      const prevMessages = prev[contactId] || [];
+      const nextMessages = prevMessages.map((msg) => (msg.id === messageId ? updater(msg) : msg));
+      if (activeContact?.id === contactId) {
+        setMessages(nextMessages);
+      }
+      return { ...prev, [contactId]: nextMessages };
+    });
+  }, [activeContact?.id]);
+
   const markAllAsReadNow = useCallback(async () => {
     try {
       await api.post('/messages/read');
       const now = new Date();
-      if (partner) emitReadMessage(partner.id, now);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.senderId !== user?.id && m.status !== 'READ'
-            ? { ...m, status: 'READ', readAt: now }
-            : m
-        )
+      if (activeContact) emitReadMessage(activeContact.id, now);
+      const nextMessages = (messages || []).map((m) =>
+        m.senderId !== user?.id && m.status !== 'READ'
+          ? { ...m, status: 'READ', readAt: now }
+          : m
       );
+      setMessages(nextMessages);
+      if (activeContact) {
+        setConversations((prev) => ({ ...prev, [activeContact.id]: nextMessages }));
+      }
       pendingUnreadRef.current = 0;
       setUnreadCount(0);
       setAppBadge(0);
       document.title = BASE_TITLE;
     } catch {}
-  }, [partner, user?.id, emitReadMessage]);
+  }, [activeContact, messages, user?.id, emitReadMessage]);
 
   useEffect(() => {
+    if (!contacts.length) {
+      setActiveContact(null);
+      setMessages([]);
+      return;
+    }
+
+    const isStillSelected = activeContact && contacts.some((c) => c.user.id === activeContact.id);
+    if (!isStillSelected) {
+      setActiveContact(contacts[0].user);
+    }
+  }, [contacts, activeContact]);
+
+  useEffect(() => {
+    if (!activeContact?.id) {
+      setMessages([]);
+      return;
+    }
+
+    if (conversations[activeContact.id]) {
+      setMessages(conversations[activeContact.id]);
+      return;
+    }
+
+    let cancelled = false;
     (async () => {
       try {
-        const { data: partnerData } = await api.get('/users/partner');
-        setPartner(partnerData.partner);
-
-        const { data: msgData } = await api.get('/messages');
+        const { data: msgData } = await api.get(`/messages?receiverId=${activeContact.id}`);
         const msgs = msgData.messages || [];
-        setMessages(msgs);
-
-        if (msgData.chatClearedAt) {
-          setChatClearedInfo({ at: new Date(msgData.chatClearedAt) });
-        } else {
-          setChatClearedInfo(null);
-        }
-
-        const initialUnread = msgs.filter(
-          (m) => m.senderId !== user?.id && m.status !== 'READ'
-        ).length;
-
-        if (isTabActive()) {
-          await api.post('/messages/read');
-          if (partnerData.partner) emitReadMessage(partnerData.partner.id, new Date());
-          pendingUnreadRef.current = 0;
-          setUnreadCount(0);
-          setAppBadge(0);
-          document.title = BASE_TITLE;
-        } else {
-          pendingUnreadRef.current = initialUnread;
-          setUnreadCount(initialUnread);
-          setAppBadge(initialUnread);
-          if (initialUnread > 0) {
-            document.title = `(${initialUnread}) ${partnerData.partner?.name || 'New messages'} · ${BASE_TITLE}`;
+        if (!cancelled) {
+          storeConversationMessages(activeContact.id, msgs);
+          if (msgData.chatClearedAt) {
+            setChatClearedInfo({ at: new Date(msgData.chatClearedAt) });
+          } else {
+            setChatClearedInfo(null);
           }
+
+          const initialUnread = msgs.filter((m) => m.senderId !== user?.id && m.status !== 'READ').length;
+          if (isTabActive()) {
+            await api.post('/messages/read');
+            if (activeContact) emitReadMessage(activeContact.id, new Date());
+            pendingUnreadRef.current = 0;
+            setUnreadCount(0);
+            setAppBadge(0);
+            document.title = BASE_TITLE;
+          } else {
+            pendingUnreadRef.current = initialUnread;
+            setUnreadCount(initialUnread);
+            setAppBadge(initialUnread);
+            if (initialUnread > 0) {
+              document.title = `(${initialUnread}) ${activeContact?.name || 'New messages'} · ${BASE_TITLE}`;
+            }
+          }
+          initialLoadDone.current = true;
         }
-        initialLoadDone.current = true;
       } catch (err) {
         console.error('Failed to load chat data:', err);
       }
     })();
-  }, [user?.id, emitReadMessage]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeContact?.id, conversations, storeConversationMessages, user?.id, emitReadMessage]);
 
   useEffect(() => {
     function onVisibilityOrFocus() {
@@ -148,25 +196,36 @@ export default function ChatHome() {
 
     function handleNewMessage({ message }) {
       const isIncoming = message.senderId !== user?.id;
-      setMessages((prev) => [...prev, message]);
+      const contactId = isIncoming ? message.senderId : message.receiverId;
+      if (!contactId) return;
+
+      setConversations((prev) => {
+        const prevMessages = prev[contactId] || [];
+        const nextMessages = [...prevMessages, message];
+        if (activeContact?.id === contactId) {
+          setMessages(nextMessages);
+        }
+        return { ...prev, [contactId]: nextMessages };
+      });
       setChatClearedInfo(null);
 
       if (isIncoming) {
         const tabActive = isTabActive();
+        const senderName = contacts.find((c) => c.user.id === contactId)?.user?.name || 'Contact';
 
         if (tabActive) {
           api.post('/messages/read');
-          if (partner) emitReadMessage(partner.id, new Date());
+          emitReadMessage(contactId, new Date());
           SoundManager.playMessageReceived();
         } else {
           pendingUnreadRef.current += 1;
           setUnreadCount((n) => n + 1);
           const n = pendingUnreadRef.current;
           setAppBadge(n);
-          document.title = `(${n}) ${partner?.name || 'New message'} · ${BASE_TITLE}`;
+          document.title = `(${n}) ${senderName} · ${BASE_TITLE}`;
 
           NotificationManager.notifyNewMessage({
-            fromName: partner?.name || 'Partner',
+            fromName: senderName,
             content: message.content,
             type: message.type,
             onClick: () => {
@@ -178,35 +237,32 @@ export default function ChatHome() {
     }
 
     function handleReadUpdate({ readAt }) {
-      setMessages((prev) =>
-        prev.map((msg) => ({
-          ...msg,
-          status: 'READ',
-          readAt,
-        }))
-      );
+      if (!activeContact?.id) return;
+      setConversations((prev) => {
+        const prevMessages = prev[activeContact.id] || [];
+        const nextMessages = prevMessages.map((msg) => ({ ...msg, status: 'READ', readAt }));
+        setMessages(nextMessages);
+        return { ...prev, [activeContact.id]: nextMessages };
+      });
     }
 
     function handleReactionUpdate({ message }) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === message.id ? message : m))
-      );
+      if (!message?.id || !activeContact?.id) return;
+      updateConversationMessage(activeContact.id, message.id, () => message);
     }
 
     function handleEditUpdate({ message }) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === message.id ? message : m))
-      );
+      if (!message?.id || !activeContact?.id) return;
+      updateConversationMessage(activeContact.id, message.id, () => message);
     }
 
     function handleDeleteUpdate({ message }) {
-      setMessages((prev) =>
-        prev.map((m) => (m.id === message.id ? message : m))
-      );
+      if (!message?.id || !activeContact?.id) return;
+      updateConversationMessage(activeContact.id, message.id, () => message);
     }
 
     function handleProfileUpdated({ user }) {
-      setPartner((prev) => (prev ? { ...prev, ...user } : user));
+      setActiveContact((prev) => (prev?.id === user.id ? { ...prev, ...user } : prev));
     }
 
     socket.on('message:new', handleNewMessage);
@@ -224,33 +280,40 @@ export default function ChatHome() {
       socket.off('message:delete_update', handleDeleteUpdate);
       socket.off('profile:updated', handleProfileUpdated);
     };
-  }, [socket, partner, user, emitReadMessage, markAllAsReadNow]);
+  }, [socket, activeContact, contacts, user, emitReadMessage, markAllAsReadNow, updateConversationMessage]);
 
   const handleSendMessage = useCallback(
     async ({ content, type, replyToId }) => {
       try {
         const { data } = await api.post('/messages', {
-          receiverId: partner?.id,
+          receiverId: activeContact?.id,
           content,
           type,
           replyToId,
         });
 
         const newMsg = data.message;
-        setMessages((prev) => [...prev, newMsg]);
+        setConversations((prev) => {
+          const prevMessages = prev[activeContact?.id] || [];
+          const nextMessages = [...prevMessages, newMsg];
+          if (activeContact?.id) {
+            setMessages(nextMessages);
+          }
+          return { ...prev, [activeContact?.id]: nextMessages };
+        });
         setChatClearedInfo(null);
 
         SoundManager.playMessageSent();
 
-        if (partner) {
-          emitSendMessage(partner.id, newMsg);
+        if (activeContact) {
+          emitSendMessage(activeContact.id, newMsg);
         }
       } catch (err) {
         console.error('Failed to send message:', err);
         SoundManager.playError();
       }
     },
-    [partner, emitSendMessage]
+    [activeContact, emitSendMessage]
   );
 
   const handleUploadFile = useCallback(
@@ -264,7 +327,7 @@ export default function ChatHome() {
       });
 
       const { data: msgRes } = await api.post('/messages', {
-        receiverId: partner?.id,
+        receiverId: activeContact?.id,
         content: null,
         type: uploadRes.type,
         mediaUrl: uploadRes.url,
@@ -274,16 +337,23 @@ export default function ChatHome() {
       });
 
       const newMsg = msgRes.message;
-      setMessages((prev) => [...prev, newMsg]);
+      setConversations((prev) => {
+        const prevMessages = prev[activeContact?.id] || [];
+        const nextMessages = [...prevMessages, newMsg];
+        if (activeContact?.id) {
+          setMessages(nextMessages);
+        }
+        return { ...prev, [activeContact?.id]: nextMessages };
+      });
       setChatClearedInfo(null);
 
       SoundManager.playMessageSent();
 
-      if (partner) {
-        emitSendMessage(partner.id, newMsg);
+      if (activeContact) {
+        emitSendMessage(activeContact.id, newMsg);
       }
     },
-    [partner, emitSendMessage]
+    [activeContact, emitSendMessage]
   );
 
   const handleReact = useCallback(
@@ -291,16 +361,18 @@ export default function ChatHome() {
       try {
         const { data } = await api.post(`/messages/${messageId}/reaction`, { emoji });
         const updatedMsg = data.message;
-        setMessages((prev) => prev.map((m) => (m.id === messageId ? updatedMsg : m)));
+        if (activeContact?.id) {
+          updateConversationMessage(activeContact.id, messageId, () => updatedMsg);
+        }
 
-        if (partner) {
-          emitReaction(partner.id, updatedMsg);
+        if (activeContact) {
+          emitReaction(activeContact.id, updatedMsg);
         }
       } catch (err) {
         console.error('Failed to react to message:', err);
       }
     },
-    [partner, emitReaction]
+    [activeContact, emitReaction, updateConversationMessage]
   );
 
   const handleEdit = useCallback(
@@ -308,16 +380,18 @@ export default function ChatHome() {
       try {
         const { data } = await api.put(`/messages/${messageId}`, { content: newContent });
         const updatedMsg = data.message;
-        setMessages((prev) => prev.map((m) => (m.id === messageId ? updatedMsg : m)));
+        if (activeContact?.id) {
+          updateConversationMessage(activeContact.id, messageId, () => updatedMsg);
+        }
 
-        if (partner) {
-          emitEditMessage(partner.id, updatedMsg);
+        if (activeContact) {
+          emitEditMessage(activeContact.id, updatedMsg);
         }
       } catch (err) {
         console.error('Failed to edit message:', err);
       }
     },
-    [partner, emitEditMessage]
+    [activeContact, emitEditMessage, updateConversationMessage]
   );
 
   const handleDelete = useCallback(
@@ -325,25 +399,27 @@ export default function ChatHome() {
       try {
         const { data } = await api.delete(`/messages/${messageId}`);
         const updatedMsg = data.message;
-        setMessages((prev) => prev.map((m) => (m.id === messageId ? updatedMsg : m)));
+        if (activeContact?.id) {
+          updateConversationMessage(activeContact.id, messageId, () => updatedMsg);
+        }
 
-        if (partner) {
-          emitDeleteMessage(partner.id, updatedMsg);
+        if (activeContact) {
+          emitDeleteMessage(activeContact.id, updatedMsg);
         }
       } catch (err) {
         console.error('Failed to delete message:', err);
       }
     },
-    [partner, emitDeleteMessage]
+    [activeContact, emitDeleteMessage, updateConversationMessage]
   );
 
   const handleTypingStart = useCallback(() => {
-    if (partner) emitTypingStart(partner.id);
-  }, [partner, emitTypingStart]);
+    if (activeContact) emitTypingStart(activeContact.id);
+  }, [activeContact, emitTypingStart]);
 
   const handleTypingStop = useCallback(() => {
-    if (partner) emitTypingStop(partner.id);
-  }, [partner, emitTypingStop]);
+    if (activeContact) emitTypingStop(activeContact.id);
+  }, [activeContact, emitTypingStop]);
 
   const handleOpenOwnProfile = useCallback(() => {
     setProfileViewingUser(null);
@@ -351,11 +427,19 @@ export default function ChatHome() {
   }, []);
 
   const handleOpenPartnerProfile = useCallback(() => {
-    if (partner) {
-      setProfileViewingUser(partner);
+    if (activeContact) {
+      setProfileViewingUser(activeContact);
       setProfileModalOpen(true);
     }
-  }, [partner]);
+  }, [activeContact]);
+
+  const handleOpenAddContact = useCallback(() => {
+    setAddContactOpen(true);
+  }, []);
+
+  const handleCloseAddContact = useCallback(() => {
+    setAddContactOpen(false);
+  }, []);
 
   const handleCloseProfile = useCallback(() => {
     setProfileModalOpen(false);
@@ -392,11 +476,14 @@ export default function ChatHome() {
     <div className="h-screen h-[100dvh] h-[100svh] flex overflow-hidden bg-whatsapp-panelLight dark:bg-[#111b21]">
       {showSidebar && (
         <ChatSidebar
-          partner={partner}
+          activeContact={activeContact}
+          contacts={contacts}
           lastMessage={lastMessage}
           unreadCount={unreadCount}
           onOpenOwnProfile={handleOpenOwnProfile}
           onOpenPartnerProfile={handleOpenPartnerProfile}
+          onOpenAddContact={handleOpenAddContact}
+          onSelectContact={setActiveContact}
           onGoToChat={handleGoToChat}
           className={isMobile ? 'absolute inset-0 z-20' : ''}
           isMobile={isMobile}
@@ -406,7 +493,7 @@ export default function ChatHome() {
       {showChat && (
         <main className={`flex-1 flex flex-col min-w-0 bg-white dark:bg-whatsapp-chatBgDark relative ${isMobile ? 'absolute inset-0 z-10' : ''}`}>
           <ChatHeader
-            partner={partner}
+            partner={activeContact}
             onClearChat={handleClearChat}
             onOpenPartnerProfile={handleOpenPartnerProfile}
             onBackToSidebar={handleBackToSidebar}
@@ -441,11 +528,17 @@ export default function ChatHome() {
         onClose={() => setViewingMedia(null)}
       />
 
+      <AddContactModal
+        isOpen={addContactOpen}
+        onClose={handleCloseAddContact}
+        onContactAdded={handleCloseAddContact}
+      />
+
       <ProfileModal
         isOpen={profileModalOpen}
         onClose={handleCloseProfile}
         viewingUser={profileViewingUser}
-        notifyUserId={partner?.id}
+        notifyUserId={activeContact?.id}
       />
     </div>
   );

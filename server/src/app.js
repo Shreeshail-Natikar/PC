@@ -12,6 +12,7 @@ import authRoutes from './routes/auth.routes.js';
 import usersRoutes from './routes/users.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
+import contactsRoutes from './routes/contacts.routes.js';
 import { apiLimiter } from './middleware/rateLimiters.js';
 import { errorHandler, notFound } from './middleware/errorHandler.js';
 
@@ -61,6 +62,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/contacts', contactsRoutes);
 
 if (isProd && fs.existsSync(CLIENT_DIST)) {
   app.use(express.static(CLIENT_DIST, { maxAge: '7d', immutable: true, index: false }));
