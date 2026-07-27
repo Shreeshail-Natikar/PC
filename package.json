@@ -6,8 +6,10 @@
   "scripts": {
     "install:all": "cd server && npm install && cd ../client && npm install",
     "setup": "npm run install:all && npm run prisma:setup",
+    "prisma:generate": "cd server && npx prisma generate",
     "prisma:setup": "cd server && npx prisma generate && npx prisma db push",
     "build": "cd client && npm run build",
+    "postinstall": "npm run prisma:generate",
     "dev": "concurrently -n server,client -c green,cyan \"npm:dev:server\" \"npm:dev:client\"",
     "dev:server": "cd server && npm run dev",
     "dev:client": "cd client && npm run dev",

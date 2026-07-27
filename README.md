@@ -78,19 +78,26 @@ Frontend auto-connects to backend via Vite proxy. Open **http://localhost:5173**
 ### Railway / Render / Fly.io / any Node host
 
 1. Push the whole repo to your git host (**`/uploads` is gitignored**).
-2. Build command: `npm run install:all && npm run prisma:setup && npm run build`
-3. Start command: `npm start`
-4. Required environment variables (in server's `.env` or host dashboard):
+2. **Build Command** — paste exactly this into the platform's Build Command field:
+   ```bash
+   npm install && npx prisma generate && npx prisma db push --schema server/prisma/schema.prisma && (cd client && npm install && npm run build)
+   ```
+   *(Shortcut on platforms where Root Directory = repo root: if you'd rather use scripts, use `npm run install:all && npm run prisma:setup && npm run build`)*
+3. **Start Command** — paste exactly this into the platform's Start Command field:
+   ```bash
+   npm start
+   ```
+4. Required environment variables (in server's `.env` or host dashboard — Neon Postgres example shown):
    ```env
    NODE_ENV=production
    PORT=5001
-   DATABASE_URL="file:./dev.db"
+   DATABASE_URL="postgresql://neondb_owner:PASS@ep-xx.us-east-2.aws.neon.tech/neondb?sslmode=require"
    JWT_ACCESS_SECRET=make_sure_this_is_a_long_random_string_≥32chars
    JWT_REFRESH_SECRET=make_sure_this_is_a_DIFFERENT_long_random_string
    CLIENT_ORIGIN=https://your-app.example.com   ← for CORS lockdown, comma-separate multiple
    ```
-5. ✅ If you use SQLite + a PaaS: enable a **persistent volume** mounted at `server/prisma/` (so `dev.db` survives redeploys) AND at `server/uploads/` (for attachments).
-6. HTTPS must be enabled on your host (required for camera/mic on real devices).
+5. If you use PostgreSQL (Neon/Supabase/Render Postgres) you do **not** need a persistent volume — the DB lives in the cloud. You only need a volume mounted at `server/uploads/` so user attachments (images/voice notes/PDFs) survive redeploys.
+6. HTTPS must be enabled on your host (required for camera/mic on real devices + notifications + WebRTC).
 
 ### Raspberry Pi / Home VPS behind nginx
 
