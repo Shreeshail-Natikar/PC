@@ -7,7 +7,7 @@ import {
 } from '../utils/jwt.js';
 
 const SALT_ROUNDS = 12;
-const MAX_USERS = Number(process.env.MAX_USERS || 2);
+const MAX_USERS = Number(process.env.MAX_USERS || 10);
 
 function sanitizeUser(user) {
   const { password, refreshToken, ...safe } = user;
