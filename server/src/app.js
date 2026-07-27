@@ -31,9 +31,10 @@ app.use(
 );
 
 const isProd = process.env.NODE_ENV === 'production';
-const corsOrigin = isProd && process.env.CLIENT_ORIGIN
-  ? process.env.CLIENT_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
-  : true;
+const corsOrigin =
+  isProd && process.env.CLIENT_ORIGIN
+    ? process.env.CLIENT_ORIGIN.split(",").map((s) => s.trim()).filter(Boolean)
+    : true;
 
 app.use(
   cors({
